@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  - push
+  - workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Build Docker Image
+        run: |
+          cat > Dockerfile << 'EOF'
+          FROM kalilinux/kali-rolling
+
+          ENV DEBIAN_FRONTEND=noninteractive
+
+          RUN apt-get update && \
+              apt-get install -y kali-desktop-xfce xrdp sudo && \
+              useradd -m -s /bin/bash kali && \
+              echo "kali:kali" | chpasswd && \
+              adduser kali sudo
+
+          RUN echo "startxfce4" > /home/kali/.xsession
+          RUN chown kali:kali /home/kali/.xsession
+
+          EXPOSE 3389
+
+          CMD service xrdp start && tail -f /dev/null
+          EOF
+
+          docker build -t kali-xrdp .
+
+      - name: Run Docker Container
+        run: |
+          docker run -d -p 3389:3389 --name kali-xrdp kali-xrdp
+
+      - name: Download ngrok
+        run: |
+          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+          tar xvzf ngrok-v3-stable-linux-amd64.tgz
+
+      - name: Auth ngrok
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          ./ngrok authtoken $NGROK_AUTH_TOKEN
+
+      - name: Create Tunnel
+        run: |
+          ./ngrok tcp 3389 --log=stdout > ngrok.log &
+
+      - name: Get ngrok URL
+        run: |
+          sleep 10
+          curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+
+      - name: Keep Alive
+        run: |
+          sleep 21600
