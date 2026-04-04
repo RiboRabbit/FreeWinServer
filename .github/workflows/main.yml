@@ -24,7 +24,7 @@ jobs:
           Set-Service -Name TermService -StartupType Automatic
           Start-Service TermService
 
-      - name: Verify RDP Port
+      - name: Verify RDP
         run: |
           netstat -an | findstr 3389
           Test-NetConnection -ComputerName localhost -Port 3389
@@ -40,14 +40,15 @@ jobs:
         run: |
           .\ngrok\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN
 
-      - name: Start Tunnel
+      - name: Start Tunnel (Improved)
         run: |
-          Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389"
+          Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389 --region=ap --log=stdout"
 
-      - name: Get Connection URL
+      - name: Get Tunnel URL
         run: |
-          Start-Sleep -Seconds 10
-          (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
+          Start-Sleep -Seconds 12
+          $t = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels)
+          $t.tunnels[0].public_url
 
       - name: Keep Alive
         run: |
