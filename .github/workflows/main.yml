@@ -1,64 +1,59 @@
 name: CI
-
 on:
   - push
   - workflow_dispatch
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-
       - name: Build Docker Image
         run: |
           cat > Dockerfile << 'EOF'
-          FROM kalilinux/kali-rolling
-
+          FROM ubuntu:22.04
           ENV DEBIAN_FRONTEND=noninteractive
-
           RUN apt-get update && \
-              apt-get install -y kali-desktop-xfce xrdp sudo && \
-              useradd -m -s /bin/bash kali && \
-              echo "kali:kali" | chpasswd && \
-              adduser kali sudo
-
-          RUN echo "startxfce4" > /home/kali/.xsession
-          RUN chown kali:kali /home/kali/.xsession
-
+              apt-get install -y \
+                xrdp \
+                xfce4 \
+                xfce4-goodies \
+                sudo \
+                dbus-x11 \
+                x11-xserver-utils \
+                xorgxrdp && \
+              useradd -m -s /bin/bash user && \
+              echo "user:user" | chpasswd && \
+              adduser user sudo
+          RUN echo "startxfce4" > /home/user/.xsession && \
+              chown user:user /home/user/.xsession
+          RUN sed -i 's/port=3389/port=3389/' /etc/xrdp/xrdp.ini && \
+              sed -i 's/security_layer=negotiate/security_layer=rdp/' /etc/xrdp/xrdp.ini && \
+              sed -i 's/encrypt_level=high/encrypt_level=low/' /etc/xrdp/xrdp.ini && \
+              sed -i 's/bitmap_compression=true/bitmap_compression=true/' /etc/xrdp/xrdp.ini
           EXPOSE 3389
-
           CMD service xrdp start && tail -f /dev/null
           EOF
-
-          docker build -t kali-xrdp .
-
+          docker build -t windows-xrdp .
       - name: Run Docker Container
         run: |
-          docker run -d -p 3389:3389 --name kali-xrdp kali-xrdp
-
+          docker run -d -p 3389:3389 --name windows-xrdp windows-xrdp
       - name: Download ngrok
         run: |
           wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
           tar xvzf ngrok-v3-stable-linux-amd64.tgz
-
       - name: Auth ngrok
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
           ./ngrok authtoken $NGROK_AUTH_TOKEN
-
       - name: Create Tunnel
         run: |
           ./ngrok tcp 3389 --log=stdout > ngrok.log &
-
       - name: Get ngrok URL
         run: |
           sleep 10
           curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
-
       - name: Keep Alive
         run: |
           sleep 21600
