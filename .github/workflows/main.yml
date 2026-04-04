@@ -1,39 +1,54 @@
 name: CI
-on: [push, workflow_dispatch]
+
+on:
+  - push
+  - workflow_dispatch
 
 jobs:
-  b:
+  build:
     runs-on: windows-latest
+
     steps:
-      - name: s1
+      - name: Setup RDP
         run: |
-          $u="runneradmin";$p="P@ssw0rd!"
+          $u="runneradmin"
+          $p="Str0ngP@ssw0rd!"
+
           net user $u $p /add
           net localgroup administrators $u /add
+
           reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: s2
-        run: |
-          $n="ngrok.zip"
-          iwr https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile $n
-          Expand-Archive $n
+          Set-Service -Name TermService -StartupType Automatic
+          Start-Service TermService
 
-      - name: s3
+      - name: Verify RDP Port
+        run: |
+          netstat -an | findstr 3389
+          Test-NetConnection -ComputerName localhost -Port 3389
+
+      - name: Download ngrok
+        run: |
+          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip
+
+      - name: Auth ngrok
         env:
-          T: ${{ secrets.NGROK_AUTH_TOKEN }}
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
-          .\ngrok\ngrok.exe config add-authtoken $env:T
+          .\ngrok\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN
 
-      - name: s4
+      - name: Start Tunnel
         run: |
           Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389"
 
-      - name: s5
+      - name: Get Connection URL
         run: |
-          sleep 10
-          (irm http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
+          Start-Sleep -Seconds 10
+          (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
 
-      - name: s6
+      - name: Keep Alive
         run: |
-          sleep 21600
+          Start-Sleep -Seconds 21600
